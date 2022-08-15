@@ -1,7 +1,12 @@
+import time
+
+import selenium.webdriver.ie.options
 import telebot
 from dotenv import load_dotenv, find_dotenv
 from pprint import pprint
 import requests
+from bs4 import BeautifulSoup as bs
+from selenium import webdriver
 
 import os
 
@@ -24,7 +29,17 @@ def telegram(token):
 
     @bot.message_handler(commands=['start'])
     def start(message):
-        bot.send_message(message.chat.id, 'Привет!')
+        ChatID = message.chat.id
+        bot.send_message(ChatID, 'Привет!')
+        with open('test.png', 'rb') as file:
+            bot.send_photo(ChatID, file)
+
+    @bot.message_handler(content_types=['text'])
+    def weather(message):
+        ChatID = message.chat.id
+        yandex_parse(city=message.text)
+        with open('test.png', 'rb') as file:
+            bot.send_photo(ChatID, file)
 
     # @bot.message_handler(commands=['help'])
     # def help(message):
@@ -63,6 +78,7 @@ def telegram(token):
     #     pass
     bot.polling()
 
+
 def open_weather(city):
     open_weather_api = os.getenv('OPENWEATHER_TOKEN')
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={open_weather_api}'
@@ -71,9 +87,42 @@ def open_weather(city):
     pprint(data)
 
 
+def yandex_parse(city):
+    global driver
+    try:
+
+        # options = selenium.webdriver.ie.options.Options()
+        # options.add_argument("--headless")
+        # options.add_argument("window-size=100, 100")
+
+        driver = webdriver.Chrome()
+
+        driver.get(f'https://yandex.ru/pogoda/{city}/')
+        time.sleep(5)
+        driver.save_screenshot('test.png')
+
+        src = driver.page_source
+
+        soup = bs(src, 'lxml')
+
+        # with open('index_selenium.html', 'w', encoding="utf-8") as file:
+        #     file.write(str(driver.page_source))
+
+        print(soup.find(name='span', class_='temp__value temp__value_with-unit').text)
+
+    except Exception as ex:
+        print(ex)
+    finally:
+        driver.close()
+        driver.quit()
+
+
 def main():
     telegram(os.getenv('TELEGRAM_TOKEN'))
-    # open_weather('Саратов')
+
+
+# telegram(os.getenv('TELEGRAM_TOKEN'))
+# open_weather('Саратов')
 
 
 # Press the green button in the gutter to run the script.
