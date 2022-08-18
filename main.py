@@ -1,16 +1,132 @@
 import time
 
-import selenium.webdriver.ie.options
 import telebot
 from dotenv import load_dotenv, find_dotenv
 from pprint import pprint
 import requests
 from bs4 import BeautifulSoup as bs
 from selenium import webdriver
+from selenium.webdriver.common.by import By
+
+from PIL import Image
 
 import os
 
 load_dotenv(find_dotenv())
+
+before_info = {
+    'Город': '',
+    'Температура': '',
+    'Ощущается как': '',
+    'Осдаки': '',  # ясно, пасмурно
+    'Ветер': '',
+    'Влажность': '',
+    'Давление': '',
+    'В ближайшее время': '',
+    'Восход': '',
+    'Закат': ''
+}
+
+
+def parse_info(city):
+    before_info['Город'] = city
+
+    driver = webdriver.Chrome()
+
+    url = f'https://yandex.ru/pogoda/{city}/'
+    driver.get(url)
+    time.sleep(5)
+
+    # coords = driver.current_url
+    # coords = coords.replace(url[:-1], '')
+    # coords = coords.replace('?', '')
+    # coords = coords.split('&')
+    # before_info['lat'] = coords[0]
+    # before_info['lon'] = coords[1]
+
+    # driver.save_screenshot('test.png')
+
+    src = driver.page_source
+
+    driver.close()
+    driver.quit()
+
+    soup = bs(src, 'lxml')
+
+    temp = soup.find('span', class_='temp__value temp__value_with-unit').text + '°'
+    before_info['Температура'] = temp
+
+    temp_feel = soup.find('div', class_='term term_orient_h fact__feels-like')
+    temp_feel = temp_feel.find('span', class_='temp__value temp__value_with-unit').text + '°'
+    before_info['Ощущается как'] = temp_feel
+
+    downfall = soup.find('div', class_='link__condition day-anchor i-bem').text
+    before_info['Осдаки'] = downfall
+
+    wind_speed = soup.find('span', class_='wind-speed').text + ' м/с'
+    wind_direction = soup.find('abbr', class_='icon-abbr').text
+    before_info['Ветер'] = wind_speed + ', ' + wind_direction
+
+    humidity = soup.find('div', class_='term term_orient_v fact__humidity')
+    humidity = humidity.find('div', class_='term__value').text
+    before_info['Влажность'] = humidity
+
+    pressure = soup.find('div', class_='term term_orient_v fact__pressure')
+    pressure = pressure.find('div', class_='term__value').text
+    before_info['Давление'] = pressure
+
+    next_two_hours = soup.find('p', class_='maps-widget-fact__title').text
+    before_info['В ближайшее время'] = next_two_hours.replace('\xa0', ' ').lower()
+
+    sunrise = soup.find('div',
+                        class_='sun-card__sunrise-sunset-info sun-card__sunrise-sunset-info_value_rise-time').text
+    before_info['Восход'] = sunrise.split('Восход')[1]
+
+    sunset = soup.find('div', class_='sun-card__sunrise-sunset-info sun-card__sunrise-sunset-info_value_set-time').text
+    before_info['Закат'] = sunset.split('Закат')[1]
+
+    return before_info
+
+
+def save_screen_weather(city):
+    url = f'https://yandex.ru/pogoda/{city}/maps/nowcast?via=mmapwb&le_Lightning=1'
+
+    driver = webdriver.Chrome()
+    driver.set_window_position(0, 0)
+    driver.set_window_size(1024, 768)
+
+    driver.get(url)
+    time.sleep(5)
+
+    # gif
+    frames = []
+
+    for i in range(14, 24):
+        driver.save_screenshot(f'weather_map_screens/next_two_hours_{i}.png')
+
+        # crop im
+        im = Image.open(f'weather_map_screens/next_two_hours_{i}.png')
+        # im_crop = im.crop((1600, 300, 3850, 1850))
+        # im_crop.save(f'next_two_hours_{i}.png')
+        frames.append(im)
+
+        time.sleep(2)
+        content = driver.find_element(By.XPATH, f"/html/body/div[3]/div[2]/div[7]/div/div[2]/div[2]/div/div[{i}]")
+        content.click()
+
+    frames[0].save(
+        'next_90_min.gif',
+        save_all=True,
+        append_images=frames[1:],
+        optimize=True,
+        duration=1000,
+        loop=0,
+        quality=50
+    )
+    driver.close()
+    driver.quit()
+
+
 
 
 # ---Функционал---
@@ -31,52 +147,60 @@ def telegram(token):
     def start(message):
         ChatID = message.chat.id
         bot.send_message(ChatID, 'Привет!')
-        with open('test.png', 'rb') as file:
-            bot.send_photo(ChatID, file)
 
     @bot.message_handler(content_types=['text'])
     def weather(message):
         ChatID = message.chat.id
-        yandex_parse(city=message.text)
-        with open('test.png', 'rb') as file:
-            bot.send_photo(ChatID, file)
+        # after_info = parse_info(city=message.text)
 
-    # @bot.message_handler(commands=['help'])
-    # def help(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['addtime'])
-    # def add_time(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['deltime'])
-    # def del_time(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['addtown'])
-    # def add_town(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['deltown'])
-    # def del_town(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['options'])
-    # def options(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['enablelocalwarning'])
-    # def enable_local_warning(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['enablehourly'])
-    # def enable_hourly(message):
-    #     pass
-    #
-    # @bot.message_handler(commands=['enabletomorrowweather'])
-    # def enable_hourly(message):
-    #     pass
-    bot.polling()
+        # mes = ''
+        # for key in after_info.keys():
+        #     mes += key
+        #     mes += ': ' + after_info.get(key) + '\n'
+
+        # bot.send_message(ChatID, mes)
+        # save_screen_weather(before_info['Город'])
+        save_screen_weather('moscow')
+        with open('next_90_min.gif', 'rb') as file:
+            bot.send_animation(ChatID, file, caption="mes")
+
+    @bot.message_handler(commands=['help'])
+    def help(message):
+        pass
+
+    @bot.message_handler(commands=['addtime'])
+    def add_time(message):
+        pass
+
+    @bot.message_handler(commands=['deltime'])
+    def del_time(message):
+        pass
+
+    @bot.message_handler(commands=['addtown'])
+    def add_town(message):
+        pass
+
+    @bot.message_handler(commands=['deltown'])
+    def del_town(message):
+        pass
+
+    @bot.message_handler(commands=['options'])
+    def options(message):
+        pass
+
+    @bot.message_handler(commands=['enablelocalwarning'])
+    def enable_local_warning(message):
+        pass
+
+    @bot.message_handler(commands=['enablehourly'])
+    def enable_hourly(message):
+        pass
+
+    @bot.message_handler(commands=['enabletomorrowweather'])
+    def enable_hourly(message):
+        pass
+
+    bot.polling(none_stop=True)
 
 
 def open_weather(city):
@@ -99,7 +223,7 @@ def yandex_parse(city):
 
         driver.get(f'https://yandex.ru/pogoda/{city}/')
         time.sleep(5)
-        driver.save_screenshot('test.png')
+        # driver.save_screenshot('test.png')
 
         src = driver.page_source
 
@@ -118,6 +242,7 @@ def yandex_parse(city):
 
 
 def main():
+    # yandex_parse('moscow')
     telegram(os.getenv('TELEGRAM_TOKEN'))
 
 
